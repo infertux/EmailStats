@@ -23,13 +23,16 @@ if version_info[0] < 3:
 import imaplib, re, collections
 from email.header import decode_header
 from email.parser import HeaderParser
-from math import log10
 
 
 class EmailStats:
-    """Just a few statistics with your emails (IMAP only)"""
+    """Just a few statistics with your emails
+    This library should be safe to use because it connects in read-only mode
+    to the IMAP account.
+    """
 
     def connect(self, host, ssl = True, port = None):
+        """Connect to the given host:port in IMAP[S]"""
         if port == None:
             port = 993 if ssl else 143
 
@@ -37,38 +40,47 @@ class EmailStats:
             else imaplib.IMAP4(host, port)
 
     def login(self, username, password):
+        """Try to login"""
         try:
             status, data = self._con.login(username, password)
         except imaplib.IMAP4.error as e:
             self._con.logout()
             raise
 
-    def printMailboxes(self):
+    def getMailboxes(self):
+        """Return a list of available mailboxes"""
         status, mailboxes = self._con.list()
         boxes = []
         for mailbox in sorted(mailboxes):
             name = re.findall(r'"([^"]+)"', str(mailbox))[-1]
             boxes.append(name)
 
-        print("Mailboxes:", ", ".join(boxes))
+        return boxes
 
-    def printQuota(self, mailbox = 'INBOX'):
-        # select the right mailbox first (in read-only mode)
+    def getCount(self, mailbox = 'INBOX'):
+        """Return the count of messages in mailbox"""
         status, count = self._con.select(mailbox, True)
-        count = int(count[0])
-        print(count, ' emails in mailbox "', mailbox, '":', sep="")
+        return int(count[0])
+
+    def getQuota(self, mailbox = 'INBOX'):
+        """Return the quota of mailbox
+        None if unavailable
+        (used, total) otherwise
+        """
+        # select the right mailbox first (in read-only mode)
+        status, dummy = self._con.select(mailbox, True)
 
         # get quota
         status, quota = self._con.getquota('user')
         quota = re.search('\(STORAGE (\d+) (\d+)\)', str(quota))
-        if quota == None:
-            print("Quota unavailaible!", file=sys.stderr)
-        else:
-            print("Quota: ", quota.group(1), "/", quota.group(2), " KiB (",
-            round(int(quota.group(1)) / int(quota.group(2)) * 100), "% used)",
-            sep="")
 
-    def printStats(self, mailboxes = ['INBOX'], subjectFilter='', nElements=8):
+        if quota == None:
+            return None
+
+        return int(quota.group(1)), int(quota.group(2))
+
+    def getStats(self, mailboxes = ['INBOX'], subjectFilter='', nElements=8):
+        """Return a dict containing a lot of information"""
         if not isinstance(mailboxes, list):
             raise TypeError("mailboxes parameter must be a list")
 
@@ -106,7 +118,7 @@ class EmailStats:
             del h, parser
 
             if not headers['From']:
-                print("Skipping uncommunicative message (no 'From' header).")
+                # skipping uncommunicative message
                 continue
 
             headers['From'] = self._decodeHeader(headers['From'])
@@ -125,10 +137,8 @@ class EmailStats:
 
             # filter only matching subjects
             if not re.match(subjectFilter, headers['Subject']):
-                #print("Ignored:", subject)
+                # ignore this message
                 continue
-
-            #print("Matched:", subject)
 
             if headers['References']:
                 # expect the first id is the first email of the thread
@@ -147,30 +157,26 @@ class EmailStats:
 
             sender_counter.update([headers['Sender']])
 
-        if subjectFilter != "":
-            print("Filter:", subjectFilter)
-
-        total_messages = sum(msg_ID_counter.values())
-        print(total_messages, "messages")
-
-        # display only most common messages
-        print("\nThe ", nElements, " biggest trolls:\n",
-              "-" * (int(log10(nElements)) + 21), sep="")
+        stats = {}
+        stats['total'] = sum(msg_ID_counter.values())
 
         biggest_msg_IDs = msg_ID_counter.most_common(nElements)
+        stats['subjects'] = []
         for msg_ID, amount in biggest_msg_IDs:
-            subjects = '"' + '"\n  aka "'.join(msg_ID_subjects[msg_ID]) + '"'
-            print(subjects, ': ', amount, " messages (",
-            round(float(amount) / total_messages * 100), "%)" , sep="")
-
-        print("\nThe ", nElements, " biggest spammers:\n",
-              "-" * (int(log10(nElements)) + 23), sep="")
+            stats['subjects'].append({
+                'id': msg_ID,
+                'subjects': msg_ID_subjects[msg_ID],
+                'amount': amount})
 
         biggest_senders = sender_counter.most_common(nElements)
+        stats['froms'] = []
         for sender, amount in biggest_senders:
-            froms = ' aka '.join(sender_froms[sender])
-            print(froms, ': ', amount, " messages (",
-            round(float(amount) / total_messages * 100), "%)" , sep="")
+            stats['froms'].append({
+                'id': sender,
+                'froms': sender_froms[sender],
+                'amount': amount})
+
+        return stats
 
     def logout(self):
         self._con.close()
