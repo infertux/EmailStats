@@ -123,22 +123,22 @@ class EmailStats:
 
             headers['From'] = self._decodeHeader(headers['From'])
 
-            if not headers['Sender']:
-                headers['Sender'] = headers['From']
-
             if not headers['Subject']:
                 headers['Subject'] = ''
 
             headers['Subject'] = self._decodeHeader(headers['Subject'])
 
-            # remove Re and Fwd
-            headers['Subject'] = re.sub(r'^(Re: |Fwd: )+', '',
-                headers['Subject'], 0, re.IGNORECASE)
-
             # filter only matching subjects
             if not re.match(subjectFilter, headers['Subject']):
                 # ignore this message
                 continue
+
+            # remove Re and Fwd
+            headers['Subject'] = re.sub(r'^(Re: |Fwd: )+', '',
+                headers['Subject'], 0, re.IGNORECASE)
+
+            if not headers['Sender']:
+                headers['Sender'] = headers['From']
 
             if headers['References']:
                 # expect the first id is the first email of the thread
@@ -187,6 +187,7 @@ class EmailStats:
         # awful hack because of a Python bug <http://bugs.python.org/issue1079>
         # probably one of the most horrible hacks I've ever done! :shame:
         # if you have another solution, please send a patch :)
+        # this hack is optional but you may get undecoded subjects without it
         i = 1
         while re.search('%' * i, header):
             i += 1
@@ -198,16 +199,16 @@ class EmailStats:
 
         # well, let's properly decode this header now...
         decoded_header = decode_header(header)
-        header = ""
+        header = ''
         for (part,encoding) in decoded_header:
             if isinstance(part, str):
-                header += part + " "
+                header += part + ' '
             elif encoding != None:
-                header += part.decode(encoding) + " "
+                header += part.decode(encoding) + ' '
             else:
-                header += part.decode() + " "
+                header += part.decode() + ' '
 
-        header = header.rstrip(" ")
+        header = header.rstrip(' ')
 
         # awful hack, the end...
         header = header.replace(' ' + ('%' * i) + ' ', '')
