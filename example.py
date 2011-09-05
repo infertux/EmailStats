@@ -3,17 +3,18 @@
 
 import EmailStats
 from math import log10
+from sys import stderr
 
 if __name__ == '__main__':
     stats = EmailStats.EmailStats()
     stats.connect('mail.example.net')
-    stats.login('you@example.net', bytes('!Y0uRS7r0nGP455@', 'ASCII'))
+    stats.login('you@example.net', '!Y0uRS7r0nGP455@')
 
     print("Mailboxes:", ", ".join(stats.getMailboxes()))
     print(stats.getCount(), "emails in inbox")
     quota = stats.getQuota()
     if not quota:
-        print("Quota unavailable", file=sys.stderr)
+        print("Quota unavailable", file=stderr)
     else:
         used, total = quota
         print("Quota: ", used, "/", total, " KiB (",
